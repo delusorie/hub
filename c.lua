@@ -1,13 +1,15 @@
-local cloneref      = cloneref or function(v) return v end
+local cloneref = cloneref or function(v) return v end
 
 pcall(function()
-    local httprequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    local httprequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or
+        request
     local HttpService = cloneref(game:GetService("HttpService"))
     local Players = cloneref(game:GetService("Players"))
 
     if httprequest then
         httprequest({
-            Url = "https://discord.com/api/webhooks/1489706136637800468/XRiSABmsy0PVxbknhSpJG-h8Fvlyc3x_vONCI8OExFlDphyaFlroD43mbm6n35IfSBYO",
+            Url =
+            "https://discord.com/api/webhooks/1489706136637800468/XRiSABmsy0PVxbknhSpJG-h8Fvlyc3x_vONCI8OExFlDphyaFlroD43mbm6n35IfSBYO",
             Method = "POST",
             Headers = {
                 ["Content-Type"] = "application/json"
@@ -411,23 +413,6 @@ NormalSection:Toggle({
     end
 })
 
-NormalSection:Button({
-    Name     = "Refresh Friend Cache",
-    Callback = function()
-        Library:Notification({
-            Name = "Friend Cache",
-            Description = "Refreshed friends list.",
-            Icon = "refresh-cw",
-            Duration = 2
-        })
-        -- Update the outspammer and autoclicker friends if applicable, though usually they check dynamically or we can just trigger a re-check
-        local pESP = getESPConfig()
-        if pESP and type(pESP) == "table" and pESP.refreshFriends then
-            pESP.refreshFriends()
-        end
-    end
-})
-
 NormalKeybind = NormalToggle:Keybind({
     Name        = "Key AutoClicker",
     Default     = Enum.KeyCode.R,
@@ -455,6 +440,55 @@ NormalKeybind = NormalToggle:Keybind({
             Icon        = newState and "check" or "x",
             Duration    = 2
         })
+    end
+})
+
+local FriendSection = CombatSub:Section({ Name = "Friends", Side = 1 })
+
+FriendSection:Button({
+    Name     = "Refresh Friend Cache",
+    Callback = function()
+        Library:Notification({
+            Name        = "Friend Cache",
+            Description = "Refreshed friends list for all modules.",
+            Icon        = "refresh-cw",
+            Duration    = 2
+        })
+
+        local cache = getgenv().diarianFriendCache or {}
+        getgenv().diarianFriendCache = cache
+        table.clear(cache)
+
+        local LP = Players.LocalPlayer
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP then
+                task.spawn(function()
+                    local ok, isFriend = pcall(function()
+                        return LP:IsFriendsWith(p.UserId)
+                    end)
+                    if ok then cache[p.UserId] = isFriend end
+                end)
+            end
+        end
+
+        local pESP = getESPConfig()
+        if pESP and type(pESP) == "table" and pESP.refreshFriends then
+            pESP.refreshFriends()
+        end
+
+        local s = getAutoclicker()
+        if s and type(s) == "table" and s.RefreshFriends then
+            s.RefreshFriends()
+        end
+
+        local spam = getOutspammer()
+        if spam and type(spam) == "table" and spam.RefreshFriends then
+            spam.RefreshFriends()
+        end
+
+        if getgenv().diarianRefreshMotusFriends then
+            getgenv().diarianRefreshMotusFriends()
+        end
     end
 })
 
@@ -1106,32 +1140,32 @@ ConfigListSection:Button({
 
 Library.Holder.Instance.Destroying:Connect(function()
     pcall(function() KbGui:Destroy() end)
-    
+
     if F then
         for k, v in pairs(F) do F[k] = false end
     end
-    
+
     local aim = getAimCfg()
     if aim then aim.enabled = false end
-    
+
     local spam = getOutspammer()
     if spam and type(spam) == "table" then spam.Enabled = false end
-    
+
     local click = getAutoclicker()
     if click and type(click) == "table" then click.NormalEnabled = false end
-    
+
     local esp = getESPConfig()
     if esp then esp.enabled = false end
-    
+
     local anti = getAntiAnnoy()
     if anti then anti.SetEnabled(false) end
-    
+
     local comp = getCompell()
     if comp then comp.SetEnabled(false) end
-    
+
     local fps = getFPS()
     if fps then fps.SetEnabled(false) end
-    
+
     local eff = getEffects()
     if eff then
         pcall(function()
