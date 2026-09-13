@@ -91,7 +91,7 @@ local SupportedVersions = {
     [10561483644] = 598,
 
     -- Supernatural Academy
-    [10561484691] = 524,
+    [10561484691] = 534,
 
     -- New Orleans
     [10561482233] = 198,
