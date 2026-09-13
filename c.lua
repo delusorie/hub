@@ -88,7 +88,7 @@ local Players = cloneref(game:GetService("Players"))
 
 local SupportedVersions = {
     -- Moonlight Creek
-    [10561483644] = 588,
+    [10561483644] = 598,
 
     -- Supernatural Academy
     [10561484691] = 524,
