@@ -88,13 +88,13 @@ local Players = cloneref(game:GetService("Players"))
 
 local SupportedVersions = {
     -- Moonlight Creek
-    [10561483644] = 598,
+    [10561483644] = 000,
 
     -- Supernatural Academy
-    [10561484691] = 535,
+    [10561484691] = 000,
 
     -- New Orleans
-    [10561482233] = 198,
+    [10561482233] = 000,
 }
 
 local expectedVersion = SupportedVersions[game.PlaceId]
