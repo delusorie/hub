@@ -72,3 +72,118 @@ SkillCheck.Start = function(self, ...)
 
 	return result
 end
+then 
+local RS, CS, UIS = game:GetService("ReplicatedStorage"), game:GetService("CollectionService"), game:GetService("UserInputService")
+local RunS, SG, LP = game:GetService("RunService"), game:GetService("StarterGui"), game:GetService("Players").LocalPlayer
+local KEY, RANGE = Enum.KeyCode.F, 350
+local INTERVAL = 0      -- 0 = dispara todo frame
+local PACK = 400        -- copias do alvo empacotadas em args (1 pacote por frame)
+local RESPECT_CD = false -- true = so dispara com cooldown/mana liberados
+local Trigger = RS:WaitForChild("Network"):WaitForChild("AbilityTrigger")
+local SUP = { Area = 1, Hit = 1, Click = 1, Hold = 1, DualHold = 1 }
+local NAMES, F, T = { "Equip", "Unequip", "SetTarget" }, {}, {}
+
+-- alvos (tag "Target") mantidos por eventos
+local function add(m) if m:IsA("Model") then T[m] = true end end
+for _, m in CS:GetTagged("Target") do add(m) end
+CS:GetInstanceAddedSignal("Target"):Connect(add)
+CS:GetInstanceRemovedSignal("Target"):Connect(function(m) T[m] = nil end)
+
+-- funcoes do script UIs (getsenv; getgc so se falhar)
+local function load(gc)
+    pcall(function()
+        local env = getsenv(RS.Scene.Player.UIs)
+        for _, k in NAMES do F[k] = rawget(env, k) end
+    end)
+    if gc and not next(F) then pcall(function()
+        for _, f in getgc() do
+            local n = type(f) == "function" and debug.info(f, "n")
+            if table.find(NAMES, n) then
+                local ok, s = pcall(function() return getfenv(f).script end)
+                if ok and s and s.Name == "UIs" then F[n] = f end
+            end
+        end
+    end) end
+end
+
+-- habilidade equipada = upvalue u15 (indice descoberto 1 vez, leitura sem alocar)
+local fn, idx, nxt = nil, nil, 0
+local function equipped()
+    if not idx then
+        if os.clock() < nxt then return end
+        nxt = os.clock() + 0.25
+        for _, k in NAMES do
+            if F[k] then
+                for i, v in pairs(debug.getupvalues(F[k])) do
+                    if type(v) == "table" and type(v.Name) == "string" and type(v.Data) == "table" then
+                        fn, idx = F[k], i
+                        return v
+                    end
+                end
+            end
+        end
+        return
+    end
+    local a, b = debug.getupvalue(fn, idx)
+    local v = type(a) == "table" and a or b
+    return type(v) == "table" and type(v.Data) == "table" and v or nil
+end
+
+-- alvo mais perto do mouse (sem limite de pixels)
+local function pick(root, range)
+    local cam, m, rp, me = workspace.CurrentCamera, UIS:GetMouseLocation(), root.Position, LP.Character
+    local best, bs = nil, math.huge
+    for t in T do
+        local pp = t.PrimaryPart
+        local h = pp and t ~= me and t:FindFirstChildOfClass("Humanoid")
+        if h and h.Health > 0 and (pp.Position - rp).Magnitude <= range and t:FindFirstChild("CharacterValues") then
+            local p, on = cam:WorldToViewportPoint(pp.Position)
+            local dx, dy = p.X - m.X, p.Y - m.Y
+            if on and p.Z > 0 and dx * dx + dy * dy < bs then best, bs = t, dx * dx + dy * dy end
+        end
+    end
+    return best
+end
+
+local last, ceq, key, larg, pack = 0, nil, nil, nil, nil
+local function step()
+    local c = LP.Character
+    local root, h = c and c.PrimaryPart, c and c:FindFirstChildOfClass("Humanoid")
+    local eq = root and h and h.Health > 0 and equipped()
+    if not eq or not SUP[eq.Data.Type] or os.clock() - last < INTERVAL then return end
+    local d, n = eq.Data, eq.Name
+    if eq ~= ceq then ceq, key = eq, (n:gsub("[^%w_]", "_")) end
+
+    if RESPECT_CD then
+        local cd = LP:FindFirstChild("Cooldowns")
+        local e = cd and cd:GetAttribute(key)
+        if e and workspace:GetServerTimeNow() < e then return end
+        if d.Mana then
+            local cv = c:FindFirstChild("CharacterValues")
+            local mv = cv and cv:FindFirstChild(d.ManaType or "Magic")
+            if not mv or mv.Value < d.Mana then return end
+        end
+    end
+
+    local t = d.Type ~= "Area" and pick(root, d.Magnitude or RANGE)
+    if d.Type ~= "Area" and not t then return end
+    last = os.clock()
+    local arg = t and (d.Type == "Hit" and CFrame.new(t.PrimaryPart.Position) or t)
+    if arg ~= larg then larg, pack = arg, table.create(PACK, arg) end -- so recria se o alvo mudar
+    Trigger:FireServer(n, table.unpack(pack))
+end
+
+local conn
+UIS.InputBegan:Connect(function(i, gpe)
+    if gpe or i.KeyCode ~= KEY then return end
+    if conn then conn:Disconnect() conn = nil
+    else
+        if not next(F) then task.spawn(load, true) end
+        conn = RunS.Heartbeat:Connect(function()
+            if not pcall(step) then conn:Disconnect() conn = nil end
+        end)
+    end
+    pcall(SG.SetCore, SG, "SendNotification", { Title = conn and "Ativado" or "Desativado", Text = "", Duration = 1.5 })
+end)
+
+load(false)
