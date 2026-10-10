@@ -60,12 +60,20 @@ local function equipped()
     end
     local a, b = debug.getupvalue(fn, idx)
     local v = type(a) == "table" and a or b
-    return type(v) == "table" and type(v.Data) == "table" and v or nil
+    if type(v) == "table" and type(v.Data) == "table" then
+        return v
+    end
+    idx = nil
+    return nil
 end
 
 local function pick(root, range)
     local cam      = workspace.CurrentCamera
+    local vp       = cam.ViewportSize
     local m        = UIS:GetMouseLocation()
+    if m.X <= 0 and m.Y <= 0 then
+        m = Vector2.new(vp.X / 2, vp.Y / 2)
+    end
     local rp       = root.Position
     local me       = LP.Character
     local best, bs = nil, math.huge
@@ -76,8 +84,22 @@ local function pick(root, range)
             and t:FindFirstChild("CharacterValues") then
             local p, on = cam:WorldToViewportPoint(pp.Position)
             local dx, dy = p.X - m.X, p.Y - m.Y
-            if on and p.Z > 0 and dx * dx + dy * dy < bs then
-                best, bs = t, dx * dx + dy * dy
+            local dist = dx * dx + dy * dy
+            if on and p.Z > 0 and dist < bs then
+                best, bs = t, dist
+            end
+        end
+    end
+    if not best then
+        local cd = math.huge
+        for t in T do
+            local pp = t.PrimaryPart
+            local h  = pp and t ~= me and t:FindFirstChildOfClass("Humanoid")
+            if h and h.Health > 0 and t:FindFirstChild("CharacterValues") then
+                local d = (pp.Position - rp).Magnitude
+                if d <= range and d < cd then
+                    best, cd = t, d
+                end
             end
         end
     end
@@ -106,7 +128,6 @@ local function step()
 
     local t = d.Type ~= "Area" and pick(root, d.Magnitude or RANGE)
     if d.Type ~= "Area" and not t then return end
-    if t and (not t.PrimaryPart or not t:FindFirstChild("Effects")) then return end
     last = os.clock()
     local arg = t and (d.Type == "Hit" and CFrame.new(t.PrimaryPart.Position) or t)
     if arg ~= larg then larg, pack = arg, table.create(PACK, arg) end
@@ -132,10 +153,13 @@ elseif protect_gui then
 end
 gui.ResetOnSpawn                  = false
 gui.IgnoreGuiInset                = true
+gui.DisplayOrder                  = 999999
+gui.ZIndexBehavior                = Enum.ZIndexBehavior.Sibling
 gui.Parent                        = getParent()
 
 local button                      = Instance.new("ImageButton")
 button.Name                       = "ToggleButton"
+button.ZIndex                     = 10
 button.Size                       = UDim2.fromOffset(56, 56)
 button.Position                   = UDim2.new(0, 18, 0.12, 0)
 button.BackgroundColor3           = Color3.fromRGB(20, 25, 38)
@@ -213,12 +237,7 @@ local function setEnabled(state)
     if enabled then
         if not next(F) then task.spawn(load, true) end
         conn = RunS.Heartbeat:Connect(function()
-            if not pcall(step) then
-                conn:Disconnect()
-                conn         = nil
-                enabled      = false
-                stroke.Color = Color3.fromRGB(220, 65, 75)
-            end
+            pcall(step)
         end)
     else
         if conn then
@@ -230,16 +249,10 @@ local function setEnabled(state)
     showToast(enabled)
 end
 
-local dragging    = false
-local moved       = false
-local dragStart   = nil
-local startPos    = nil
-local activeInput = nil
-
 local function clampButton()
     local vp = workspace.CurrentCamera.ViewportSize
-    local px = math.clamp(button.Position.X.Offset, 0, vp.X - 56)
-    local py = math.clamp(button.Position.Y.Offset, 0, vp.Y - 56)
+    local px = math.clamp(button.Position.X.Offset, 0, math.max(0, vp.X - 60))
+    local py = math.clamp(button.Position.Y.Offset, 0, math.max(0, vp.Y - 60))
     button.Position = UDim2.new(
         button.Position.X.Scale, px,
         button.Position.Y.Scale, py
@@ -247,43 +260,51 @@ local function clampButton()
 end
 
 button.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        dragging    = true
-        moved       = false
-        dragStart   = input.Position
-        startPos    = button.Position
-        activeInput = input
-    end
-end)
-
-UIS.InputChanged:Connect(function(input)
-    if not dragging then return end
-    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
         and input.UserInputType ~= Enum.UserInputType.Touch then
         return
     end
 
-    local delta = input.Position - dragStart
-    if delta.Magnitude > 6 then moved = true end
+    local dragStart = input.Position
+    local startPos  = button.Position
+    local moved     = false
+    local cChange, cEnd
 
-    button.Position = UDim2.new(
-        startPos.X.Scale, startPos.X.Offset + delta.X,
-        startPos.Y.Scale, startPos.Y.Offset + delta.Y
-    )
+    cChange = input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.Change then
+            local delta = input.Position - dragStart
+            if delta.Magnitude > 8 then
+                moved = true
+                button.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end
+    end)
+
+    cEnd = input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then
+            if cChange then cChange:Disconnect() end
+            if cEnd then cEnd:Disconnect() end
+            clampButton()
+            if not moved then
+                setEnabled(not enabled)
+            end
+        end
+    end)
 end)
 
-UIS.InputEnded:Connect(function(input)
-    if not dragging or input ~= activeInput then return end
+UIS.InputBegan:Connect(function(i, gpe)
+    if gpe or i.KeyCode ~= Enum.KeyCode.F then return end
+    setEnabled(not enabled)
+end)
 
-    dragging    = false
-    activeInput = nil
-
-    clampButton()
-
-    if not moved then
-        setEnabled(not enabled)
-    end
+LP.CharacterAdded:Connect(function()
+    fn, idx = nil, nil
+    table.clear(F)
+    task.delay(0.5, function() load(true) end)
 end)
 
 load(false)
+if not next(F) then task.spawn(load, true) end
