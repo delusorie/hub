@@ -1,12 +1,12 @@
-local cr           = cloneref or function(x) return x end
-local RS           = cr(game:GetService("ReplicatedStorage"))
-local CS           = cr(game:GetService("CollectionService"))
-local UIS          = cr(game:GetService("UserInputService"))
-local RunS         = cr(game:GetService("RunService"))
-local SG           = cr(game:GetService("StarterGui"))
-local Players      = cr(game:GetService("Players"))
-local TweenSvc     = cr(game:GetService("TweenService"))
-local LP           = Players.LocalPlayer
+local cr         = cloneref or function(x) return x end
+local RS         = cr(game:GetService("ReplicatedStorage"))
+local CS         = cr(game:GetService("CollectionService"))
+local UIS        = cr(game:GetService("UserInputService"))
+local RunS       = cr(game:GetService("RunService"))
+local SG         = cr(game:GetService("StarterGui"))
+local Players    = cr(game:GetService("Players"))
+local TweenSvc   = cr(game:GetService("TweenService"))
+local LP         = Players.LocalPlayer
 
 local RANGE      = 350
 local INTERVAL   = 0
@@ -106,6 +106,7 @@ local function step()
 
     local t = d.Type ~= "Area" and pick(root, d.Magnitude or RANGE)
     if d.Type ~= "Area" and not t then return end
+    if t and (not t.PrimaryPart or not t:FindFirstChild("Effects")) then return end
     last = os.clock()
     local arg = t and (d.Type == "Hit" and CFrame.new(t.PrimaryPart.Position) or t)
     if arg ~= larg then larg, pack = arg, table.create(PACK, arg) end
@@ -122,10 +123,13 @@ local function getParent()
     return game:GetService("CoreGui")
 end
 
-local gui                         = Instance.new("ScreenGui")
-gui.Name                          = "_G"
-if syn and syn.protect_gui then syn.protect_gui(gui)
-elseif protect_gui then protect_gui(gui) end
+local gui = Instance.new("ScreenGui")
+gui.Name  = "_G"
+if syn and syn.protect_gui then
+    syn.protect_gui(gui)
+elseif protect_gui then
+    protect_gui(gui)
+end
 gui.ResetOnSpawn                  = false
 gui.IgnoreGuiInset                = true
 gui.Parent                        = getParent()
