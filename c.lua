@@ -10,8 +10,9 @@ local LP         = Players.LocalPlayer
 
 local RANGE      = 350
 local INTERVAL   = 0
-local PACK       = 100
+local PACK       = 1000
 local RESPECT_CD = false
+local EXCLUDE_FRIENDS = true
 
 local Trigger    = RS:WaitForChild("Network"):WaitForChild("AbilityTrigger")
 local SUP        = { Area = 1, Hit = 1, Click = 1, Hold = 1, DualHold = 1 }
@@ -22,6 +23,31 @@ local function add(m) if m:IsA("Model") then T[m] = true end end
 for _, m in CS:GetTagged("Target") do add(m) end
 CS:GetInstanceAddedSignal("Target"):Connect(add)
 CS:GetInstanceRemovedSignal("Target"):Connect(function(m) T[m] = nil end)
+
+local friendCache = {}
+local function refreshFriend(player)
+    if not player or player == LP then return end
+    task.spawn(function()
+        local ok, result = pcall(function() return LP:IsFriendsWith(player.UserId) end)
+        friendCache[player.UserId] = ok and result or false
+    end)
+end
+for _, p in ipairs(Players:GetPlayers()) do refreshFriend(p) end
+Players.PlayerAdded:Connect(refreshFriend)
+Players.PlayerRemoving:Connect(function(p) friendCache[p.UserId] = nil end)
+
+local function isFriendModel(model)
+    if not EXCLUDE_FRIENDS then return false end
+    local player = Players:GetPlayerFromCharacter(model)
+    if not player or player == LP then return false end
+    if friendCache[player.UserId] ~= nil then
+        return friendCache[player.UserId]
+    end
+    local ok, res = pcall(function() return LP:IsFriendsWith(player.UserId) end)
+    local isF = ok and res or false
+    friendCache[player.UserId] = isF
+    return isF
+end
 
 local function load(gc)
     pcall(function()
@@ -68,9 +94,9 @@ local function equipped()
 end
 
 local function pick(root, range)
-    local cam      = workspace.CurrentCamera
-    local vp       = cam.ViewportSize
-    local m        = UIS:GetMouseLocation()
+    local cam = workspace.CurrentCamera
+    local vp  = cam.ViewportSize
+    local m   = UIS:GetMouseLocation()
     if m.X <= 0 and m.Y <= 0 then
         m = Vector2.new(vp.X / 2, vp.Y / 2)
     end
@@ -78,27 +104,31 @@ local function pick(root, range)
     local me       = LP.Character
     local best, bs = nil, math.huge
     for t in T do
-        local pp = t.PrimaryPart
-        local h  = pp and t ~= me and t:FindFirstChildOfClass("Humanoid")
-        if h and h.Health > 0 and (pp.Position - rp).Magnitude <= range
-            and t:FindFirstChild("CharacterValues") then
-            local p, on = cam:WorldToViewportPoint(pp.Position)
-            local dx, dy = p.X - m.X, p.Y - m.Y
-            local dist = dx * dx + dy * dy
-            if on and p.Z > 0 and dist < bs then
-                best, bs = t, dist
+        if not isFriendModel(t) then
+            local pp = t.PrimaryPart
+            local h  = pp and t ~= me and t:FindFirstChildOfClass("Humanoid")
+            if h and h.Health > 0 and (pp.Position - rp).Magnitude <= range
+                and t:FindFirstChild("CharacterValues") then
+                local p, on = cam:WorldToViewportPoint(pp.Position)
+                local dx, dy = p.X - m.X, p.Y - m.Y
+                local dist = dx * dx + dy * dy
+                if on and p.Z > 0 and dist < bs then
+                    best, bs = t, dist
+                end
             end
         end
     end
     if not best then
         local cd = math.huge
         for t in T do
-            local pp = t.PrimaryPart
-            local h  = pp and t ~= me and t:FindFirstChildOfClass("Humanoid")
-            if h and h.Health > 0 and t:FindFirstChild("CharacterValues") then
-                local d = (pp.Position - rp).Magnitude
-                if d <= range and d < cd then
-                    best, cd = t, d
+            if not isFriendModel(t) then
+                local pp = t.PrimaryPart
+                local h  = pp and t ~= me and t:FindFirstChildOfClass("Humanoid")
+                if h and h.Health > 0 and t:FindFirstChild("CharacterValues") then
+                    local d = (pp.Position - rp).Magnitude
+                    if d <= range and d < cd then
+                        best, cd = t, d
+                    end
                 end
             end
         end
@@ -270,7 +300,7 @@ button.InputBegan:Connect(function(input)
     local moved     = false
     local cChange, cEnd
 
-    cChange = input.Changed:Connect(function()
+    cChange         = input.Changed:Connect(function()
         if input.UserInputState == Enum.UserInputState.Change then
             local delta = input.Position - dragStart
             if delta.Magnitude > 8 then
@@ -283,7 +313,7 @@ button.InputBegan:Connect(function(input)
         end
     end)
 
-    cEnd = input.Changed:Connect(function()
+    cEnd            = input.Changed:Connect(function()
         if input.UserInputState == Enum.UserInputState.End then
             if cChange then cChange:Disconnect() end
             if cEnd then cEnd:Disconnect() end
